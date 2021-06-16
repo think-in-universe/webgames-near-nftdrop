@@ -4,8 +4,8 @@ const path = require("path");
 const homedir = require("os").homedir();
 
 const CREDENTIALS_DIR = ".near-credentials";
-const ACCOUNT_ID = "zombie6.testnet";
-const WASM_PATH = "./web3games_nftdrop.wasm";
+const ACCOUNT_ID = "zombie8.testnet";
+const WASM_PATH = "./nft_simple.wasm";
 const credentialsPath = path.join(homedir, CREDENTIALS_DIR);
 const keyStore = new keyStores.UnencryptedFileSystemKeyStore(credentialsPath);
 

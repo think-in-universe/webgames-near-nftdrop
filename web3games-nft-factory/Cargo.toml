@@ -1,5 +1,5 @@
 [package]
-name = "nft"
+name = "nft-factory"
 version = "1.1.0"
 authors = ["Near Inc <hello@nearprotocol.com>"]
 edition = "2018"
