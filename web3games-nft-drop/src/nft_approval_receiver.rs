@@ -22,7 +22,7 @@ impl NonFungibleTokenApprovalReceiver for Contract {
 			token_id,
 			approval_id,
 		};
-		self.send(
+		self.send_nft(
 			public_key,
 			nft,
 		);

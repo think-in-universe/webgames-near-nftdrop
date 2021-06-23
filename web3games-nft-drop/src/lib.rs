@@ -6,6 +6,7 @@ use near_sdk::serde_json::json;
 use near_sdk::json_types::Base58PublicKey;
 use near_sdk::{
     env, near_bindgen, AccountId, PanicOnDefault, Promise, PublicKey, Gas,
+    assert_one_yocto, Balance,
 };
 
 mod nft_approval_receiver;
@@ -13,10 +14,12 @@ mod nft_approval_receiver;
 near_sdk::setup_alloc!();
 
 /// Access key allowance for linkdrop keys.
-const ACCESS_KEY_ALLOWANCE: u128 = 1_000_000_000_000_000_000_000_000;
+const ACCESS_KEY_ALLOWANCE: u128 = 50_000_000_000_000_000_000_000;
 
 const GAS_FOR_RESOLVE_TRANSFER: Gas = 10_000_000_000_000;
 const GAS_FOR_NFT_TRANSFER_CALL: Gas = 25_000_000_000_000 + GAS_FOR_RESOLVE_TRANSFER;
+
+const STORAGE_AMOUNT: u128 = 100_000_000_000_000_000_000_000;
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
@@ -27,10 +30,17 @@ pub struct NFT {
     owner_id: AccountId,
 }
 
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct Drop {
+    total: u32,
+    claimed: u32,
+}
+
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
     accounts: LookupMap<PublicKey, NFT>,
+    drop_deposits: LookupMap<AccountId, Balance>,
 }
 
 #[near_bindgen]
@@ -39,16 +49,51 @@ impl Contract {
     pub fn new() -> Self {
         Self {
             accounts: LookupMap::new(b"a".to_vec()),
+            drop_deposits: LookupMap::new(b"d".to_vec()),
         }
     }
+    #[payable]
+    pub fn drop_deposit(&mut self, total_drop: u128) {
+        let sender_id = env::predecessor_account_id();
+
+        let total_deposit = total_drop * ACCESS_KEY_ALLOWANCE;
+
+        assert_eq!(
+            env::attached_deposit(),
+            STORAGE_AMOUNT + total_deposit,
+            "Attach deposit not enough"
+        );
+
+        self.drop_deposits.insert(&sender_id, &total_deposit);
+    }
+
+    #[payable]
+    pub fn drop_withdraw(&mut self) -> bool {
+        assert_one_yocto();
+        let sender_id = env::predecessor_account_id();
+
+        let deposit = self.drop_deposits.get(&sender_id).expect("Drop deposit not found");
+
+        let amount = self.drop_deposits.remove(&sender_id).unwrap_or_default();
+        if amount == 0 {
+            Promise::new(sender_id).transfer((deposit + STORAGE_AMOUNT).into());
+            true
+        } else {
+            false
+        }
+    }
+
     /// Allows given public key to claim sent NFT.
     /// Takes ACCESS_KEY_ALLOWANCE as fee from deposit to cover account creation via an access key.
     #[payable]
-    pub fn send(&mut self, public_key: Base58PublicKey, nft: NFT) -> Promise {
-        // assert!(
-        //     env::attached_deposit() > ACCESS_KEY_ALLOWANCE,
-        //     "Attached deposit must be greater than ACCESS_KEY_ALLOWANCE"
-        // );
+     fn send_nft(&mut self, public_key: Base58PublicKey, nft: NFT) -> Promise {
+        let deposit = self.drop_deposits.get(&nft.owner_id).expect("Drop deposit not found");
+
+        assert!(
+            deposit >= ACCESS_KEY_ALLOWANCE + STORAGE_AMOUNT,
+            "Drop deposit must be greater than ACCESS_KEY_ALLOWANCE"
+        );
+
         let pk = public_key.into();
         self.accounts.insert(
             &pk,
@@ -63,7 +108,7 @@ impl Contract {
     }
 
     /// Claim NFT for specific account that are attached to the public key this tx is signed with.
-    pub fn claim(&mut self, account_id: AccountId) -> Promise {
+    pub fn claim_nft(&mut self, account_id: AccountId) -> Promise {
         assert_eq!(
             env::predecessor_account_id(),
             env::current_account_id(),
@@ -77,6 +122,10 @@ impl Contract {
             .accounts
             .remove(&env::signer_account_pk())
             .expect("Unexpected public key");
+
+        let deposit = self.drop_deposits.get(&nft.owner_id).expect("Drop deposit not found");
+        self.drop_deposits.insert(&nft.owner_id, &(deposit - ACCESS_KEY_ALLOWANCE));
+
         Promise::new(env::current_account_id()).delete_key(env::signer_account_pk());
         Promise::new(nft.contract_id)
             .function_call(
