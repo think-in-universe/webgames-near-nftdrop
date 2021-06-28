@@ -14,7 +14,7 @@ mod nft_approval_receiver;
 near_sdk::setup_alloc!();
 
 /// Access key allowance for linkdrop keys.
-const ACCESS_KEY_ALLOWANCE: u128 = 50_000_000_000_000_000_000_000;
+const ACCESS_KEY_ALLOWANCE: u128 = 500_000_000_000_000_000_000_000;
 
 const GAS_FOR_RESOLVE_TRANSFER: Gas = 10_000_000_000_000;
 const GAS_FOR_NFT_TRANSFER_CALL: Gas = 25_000_000_000_000 + GAS_FOR_RESOLVE_TRANSFER;
@@ -90,7 +90,7 @@ impl Contract {
         let deposit = self.drop_deposits.get(&nft.owner_id).expect("Drop deposit not found");
 
         assert!(
-            deposit >= ACCESS_KEY_ALLOWANCE + STORAGE_AMOUNT,
+            deposit >= ACCESS_KEY_ALLOWANCE,
             "Drop deposit must be greater than ACCESS_KEY_ALLOWANCE"
         );
 
@@ -103,7 +103,7 @@ impl Contract {
             pk,
             ACCESS_KEY_ALLOWANCE,
             env::current_account_id(),
-            b"claim".to_vec(),
+            b"claim_nft".to_vec(),
         )
     }
 
@@ -142,5 +142,11 @@ impl Contract {
                 1,
                 GAS_FOR_NFT_TRANSFER_CALL,
             )
+    }
+
+    pub fn get_deposit(&self,owner_id:AccountId) -> Balance {
+        let deposit = self.drop_deposits.get(&owner_id).expect("Drop deposit not found");
+        // deposit.into()
+        deposit
     }
 }
